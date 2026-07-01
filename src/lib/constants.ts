@@ -1,0 +1,9 @@
+export const STARTING_BUDGET_SEK = 1_000_000_000;
+export const MIN_BUDGET_SEK = 1;
+export const MAX_BUDGET_SEK = 100_000_000_000_000;
+export const STORAGE_KEY = "spend-a-billion:game:v2";
+export const LEGACY_STORAGE_KEY = "spend-a-billion:game:v1";
+export const SHARE_VERSION = 2 as const;
+export const MAX_SHARED_QUANTITY = 50_000_000;
+export const EXCHANGE_RATE_DATE = "2026-06-30";
+export const WEALTH_ESTIMATE_DATE = "2026-07-01";
