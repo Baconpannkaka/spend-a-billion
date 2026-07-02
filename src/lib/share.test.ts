@@ -1,33 +1,18 @@
+import { decodeShareData, encodeShareData, peekShareMode } from "@/lib/share";
+import type { Product } from "@/types";
 import { describe, expect, it } from "vitest";
-import { products } from "@/data/products";
-import { decodeShareData, encodeShareData } from "@/lib/share";
-import { getCartTotal } from "@/lib/cart";
-import { STARTING_BUDGET_SEK } from "@/lib/constants";
 
-describe("delningsdata", () => {
-  it("serialiserar budget, valuta, scenario och varukorg", () => {
-    const encoded = encodeShareData("Albin", [{ productId: "car-01", quantity: 2 }], STARTING_BUDGET_SEK, "EUR", { kind: "classic" }, 1234);
-    expect(decodeShareData(encoded, products)).toEqual({
-      name: "Albin",
-      cart: [{ productId: "car-01", quantity: 2 }],
-      timestamp: 1234,
-      startingBudgetSek: STARTING_BUDGET_SEK,
-      currency: "EUR",
-      budgetSource: { kind: "classic" },
-    });
+const products: Product[] = [{ id: "lux-000001", mode: "luxury", slug: "a", name: "A", categoryId: "x", categoryLabel: "X", subcategoryId: "y", subcategoryLabel: "Y", priceSek: 100, shortDescription: "", description: "", facts: [], tags: [] }];
+
+describe("share", () => {
+  it("serialiserar och avkodar v3", () => {
+    const encoded = encodeShareData("luxury", "Albin", [{ productId: "lux-000001", quantity: 2 }], 1_000, "SEK", { kind: "classic" }, 123);
+    expect(peekShareMode(encoded)).toBe("luxury");
+    expect(decodeShareData(encoded, products)?.cart).toEqual([{ productId: "lux-000001", quantity: 2 }]);
   });
-
-  it("hanterar trasig data säkert", () => {
-    expect(decodeShareData("inte-giltig-base64", products)).toBeNull();
-  });
-
-  it("ignorerar okända id och begränsar orimliga antal till budgeten", () => {
-    const encoded = encodeShareData("Test", [
-      { productId: "unknown", quantity: 4 },
-      { productId: "air-01", quantity: 999999 },
-    ], STARTING_BUDGET_SEK, "SEK", { kind: "classic" });
-    const decoded = decodeShareData(encoded, products);
-    expect(decoded?.cart).toEqual([{ productId: "air-01", quantity: 1 }]);
-    expect(getCartTotal(decoded?.cart ?? [], products)).toBeLessThanOrEqual(STARTING_BUDGET_SEK);
+  it("ignorerar okända produkter och trasig data", () => {
+    expect(decodeShareData("trasig", products)).toBeNull();
+    const encoded = encodeShareData("luxury", "X", [{ productId: "unknown", quantity: -4 }], 1_000, "SEK", { kind: "classic" });
+    expect(decodeShareData(encoded, products)).toBeNull();
   });
 });

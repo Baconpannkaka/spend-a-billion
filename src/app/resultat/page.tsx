@@ -1,9 +1,6 @@
+import { ResultClient } from "@/components/result-client";
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { ResultClient } from "@/components/result-client";
 
-export const metadata: Metadata = { title: "Resultat", description: "Se och dela ett färdigt Spend a Billion-resultat." };
-
-export default function ResultPage() {
-  return <Suspense fallback={<div className="shell min-h-[65vh] py-16"><div className="h-96 animate-pulse rounded-2xl bg-white/5 motion-reduce:animate-none" /></div>}><ResultClient /></Suspense>;
-}
+export const metadata: Metadata = { title: "Resultat" };
+export default function ResultPage() { return <Suspense fallback={<div className="shell min-h-[65vh] py-12"><div className="h-96 animate-pulse rounded-xl bg-white/5" /></div>}><ResultClient /></Suspense>; }

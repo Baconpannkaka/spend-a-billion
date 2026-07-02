@@ -2,27 +2,19 @@
 
 import { currencies } from "@/data/currencies";
 import { useGame } from "@/context/game-context";
-import type { CurrencyCode } from "@/types";
-import { Coins } from "lucide-react";
 
 export function CurrencySelect({ compact = false }: { compact?: boolean }) {
-  const { currency, setCurrency, hydrated } = useGame();
-
+  const { currency, setCurrency } = useGame();
   return (
-    <label className={`inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] text-white ${compact ? "px-2.5" : "px-3"}`}>
-      <Coins className="h-4 w-4 text-[var(--gold)]" aria-hidden="true" />
-      <span className="sr-only">Vald valuta</span>
+    <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-white/55">
+      <span className={compact ? "sr-only" : "hidden sm:inline"}>Valuta</span>
       <select
-        value={hydrated ? currency : "SEK"}
-        onChange={(event) => setCurrency(event.target.value as CurrencyCode)}
-        className={`cursor-pointer appearance-none bg-transparent font-semibold text-white outline-none ${compact ? "h-9 text-xs" : "h-11 text-sm"}`}
-        aria-label="Välj valuta för alla belopp"
+        aria-label="Välj valuta"
+        value={currency}
+        onChange={(event) => setCurrency(event.target.value as typeof currency)}
+        className="h-9 rounded-md border border-white/15 bg-white/5 px-2.5 text-sm font-semibold tracking-normal text-white outline-none focus:border-[var(--gold)]"
       >
-        {currencies.map((entry) => (
-          <option key={entry.code} value={entry.code} className="bg-[#171714] text-white">
-            {entry.code}
-          </option>
-        ))}
+        {currencies.map((entry) => <option key={entry.code} value={entry.code} className="text-black">{entry.code}</option>)}
       </select>
     </label>
   );

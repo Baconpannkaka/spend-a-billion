@@ -1,57 +1,36 @@
 "use client";
 
 import { ProductMedia } from "@/components/product-media";
+import { QuantityControl } from "@/components/quantity-control";
 import { useGame } from "@/context/game-context";
 import { useToast } from "@/context/toast-context";
-import { categoryLabels } from "@/data/products";
 import { formatMoneyFromSek } from "@/lib/format";
 import type { Product } from "@/types";
-import { ArrowUpRight, Plus } from "lucide-react";
+import { ExternalLink, ShoppingBag } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 export function ProductCard({ product }: { product: Product }) {
-  const { addItem, remaining, currency } = useGame();
+  const { addItem, currency, remaining } = useGame();
   const { showToast } = useToast();
-  const affordable = remaining >= product.priceSek;
+  const [quantity, setQuantity] = useState(1);
+  const affordable = Math.floor(remaining / product.priceSek);
 
-  const add = () => {
-    const result = addItem(product.id, 1);
-    if (result.ok) showToast(`${product.name} lades till i samlingen.`, "success");
-    else showToast(`Det där spräckte budgeten. Du saknar ${formatMoneyFromSek(result.missing, currency)}.`, "error");
-  };
+  function add() {
+    const result = addItem(product.id, quantity);
+    if (result.ok) showToast(`${quantity} × ${product.name} lades i varukorgen.`, "success");
+    else showToast(`Budgeten saknar ${formatMoneyFromSek(result.missing, currency)}.`, "error");
+  }
 
   return (
-    <article className="group overflow-hidden rounded-[1.25rem] border border-black/10 bg-[var(--paper)] shadow-[0_16px_50px_rgba(0,0,0,0.12)] transition duration-300 hover:-translate-y-1 hover:shadow-[0_22px_70px_rgba(0,0,0,0.2)]">
-      <Link href={`/produkt/${product.slug}`} className="block overflow-hidden focus-ring">
-        <div className="aspect-[4/3] transition duration-500 group-hover:scale-[1.015]">
-          <ProductMedia product={product} compact />
-        </div>
-      </Link>
-      <div className="p-5">
-        <div className="flex items-center justify-between gap-3 text-xs uppercase tracking-[0.14em] text-black/45">
-          <span>{categoryLabels[product.category]}</span>
-          {product.featured && <span className="text-[var(--gold-dark)]">Utvald</span>}
-        </div>
-        <Link href={`/produkt/${product.slug}`} className="mt-3 flex items-start justify-between gap-4 focus-ring">
-          <div>
-            <h2 className="font-display text-2xl leading-tight text-[var(--ink)]">{product.name}</h2>
-            <p className="mt-2 line-clamp-2 text-sm leading-6 text-black/60">{product.shortDescription}</p>
-          </div>
-          <ArrowUpRight className="mt-1 h-5 w-5 shrink-0 text-black/45 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" aria-hidden="true" />
-        </Link>
-        <div className="mt-5 flex items-center justify-between gap-3 border-t border-black/10 pt-4">
-          <p className="font-semibold text-[var(--ink)]">{formatMoneyFromSek(product.priceSek, currency)}</p>
-          <button
-            type="button"
-            onClick={add}
-            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[var(--ink)] px-4 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-45 focus-ring"
-            aria-label={`Lägg till ${product.name}`}
-            title={affordable ? "Lägg till i samlingen" : "För dyr för återstående budget"}
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Lägg till
-          </button>
-        </div>
+    <article className="product-card">
+      <Link href={`/produkt/?mode=${product.mode}&id=${product.id}`} className="focus-ring block aspect-[4/3] overflow-hidden bg-[#1a1a17]" aria-label={`Visa ${product.name}`}><ProductMedia product={product} compact /></Link>
+      <div className="p-4">
+        <div className="flex items-center justify-between gap-3"><p className="truncate text-[10px] font-bold uppercase tracking-[.13em] text-[var(--gold-dark)]">{product.categoryLabel} · {product.subcategoryLabel}</p>{product.collectible && <span className="rounded bg-black px-1.5 py-0.5 text-[9px] font-bold text-white">{product.collectible.gradingCompany} {product.collectible.grade}</span>}</div>
+        <Link href={`/produkt/?mode=${product.mode}&id=${product.id}`} className="mt-2 block"><h2 className="line-clamp-2 min-h-[2.8rem] font-display text-[1.35rem] leading-[1.05]">{product.name}</h2></Link>
+        <p className="mt-2 text-lg font-semibold">{formatMoneyFromSek(product.priceSek, currency)}</p>
+        <div className="mt-3 flex items-center gap-2"><QuantityControl value={quantity} onChange={setQuantity} compact max={Math.max(1, affordable)} /><button type="button" disabled={affordable < 1} onClick={add} className="focus-ring inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md bg-[var(--ink)] px-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-35"><ShoppingBag className="h-3.5 w-3.5" /> Lägg till</button><Link href={`/produkt/?mode=${product.mode}&id=${product.id}`} aria-label="Öppna produkt" className="focus-ring grid h-8 w-8 place-items-center rounded-md border border-black/15"><ExternalLink className="h-3.5 w-3.5" /></Link></div>
+        <p className="mt-2 text-[11px] text-black/40">{affordable > 0 ? `Du har råd med ${affordable.toLocaleString("sv-SE")} till.` : "Utanför återstående budget."}</p>
       </div>
     </article>
   );

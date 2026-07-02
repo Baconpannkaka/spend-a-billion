@@ -1,15 +1,9 @@
-SPEND A BILLION – PUBLICERA EN TESTSIDA PÅ GITHUB
+SPEND A BILLION – GITHUB PAGES
 
-Du behöver inte installera något program.
+1. Packa upp zip-filen.
+2. Ladda upp ALLT INNE I MAPPEN direkt i repositoryts huvudnivå.
+3. Kontrollera att package.json, package-lock.json, src, public och .github syns direkt under Code.
+4. Gå till Settings → Pages och välj GitHub Actions.
+5. Öppna Actions och vänta tills både build och deploy är gröna.
 
-1. Skapa ett nytt PUBLIC repository på github.com, exempelvis "spend-a-billion".
-2. Välj Add file -> Upload files.
-3. Öppna den här mappen och dra in ALLA filer och mappar till GitHub.
-   Viktigt: .github-mappen måste följa med.
-4. Välj Commit changes.
-5. Gå till Settings -> Pages och välj GitHub Actions under Source.
-
-Öppna sedan fliken Actions. När "Build and deploy Spend a Billion" är grön
-finns länken till testsidan under Settings -> Pages.
-
-Den fullständiga guiden finns i README.md.
+Projektet innehåller två kataloger med 10 000 produkter vardera. GitHub-bygget kan därför ta några minuter och den färdiga zip-filen är större än tidigare version.

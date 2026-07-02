@@ -1,11 +1,5 @@
-import type { Metadata } from "next";
 import { ShopClient } from "@/components/shop-client";
+import type { Metadata } from "next";
 
-export const metadata: Metadata = {
-  title: "Shoppa",
-  description: "Välj bland 40 lyxprodukter och försök spendera din valda fantasiförmögenhet utan att gå över budget.",
-};
-
-export default function ShopPage() {
-  return <ShopClient />;
-}
+export const metadata: Metadata = { title: "Shop", description: "Sök, filtrera och shoppa i din valda fantasikatalog." };
+export default function ShopPage() { return <ShopClient />; }

@@ -1,34 +1,80 @@
-export const PRODUCT_CATEGORIES = [
-  "bilar",
-  "klockor",
-  "flyg",
-  "yachter",
-  "fastigheter",
-  "samlarobjekt",
-] as const;
-
-export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number];
+export const GAME_MODES = ["luxury", "everyday"] as const;
+export type GameMode = (typeof GAME_MODES)[number];
 
 export const CURRENCY_CODES = ["SEK", "USD", "EUR", "GBP", "NOK", "DKK", "CHF", "JPY", "CAD", "AUD"] as const;
 export type CurrencyCode = (typeof CURRENCY_CODES)[number];
 
+export type CatalogSubcategory = {
+  id: string;
+  label: string;
+};
+
+export type CatalogCategory = {
+  id: string;
+  label: string;
+  description: string;
+  subcategories: CatalogSubcategory[];
+};
+
+export type CollectibleCardDetails = {
+  franchise: string;
+  set: string;
+  year: string;
+  cardNumber: string;
+  language: string;
+  gradingCompany: string;
+  grade: number;
+  populationNote?: string;
+};
+
 export type Product = {
   id: string;
+  mode: GameMode;
   slug: string;
   name: string;
   brand?: string;
-  category: ProductCategory;
+  categoryId: string;
+  categoryLabel: string;
+  subcategoryId: string;
+  subcategoryLabel: string;
   priceSek: number;
   shortDescription: string;
   description: string;
   facts: string[];
-  imageUrl?: string;
-  imageAlt?: string;
-  imageSourceUrl?: string;
-  imageCreator?: string;
-  imageLicense?: string;
-  imageLicenseUrl?: string;
+  tags: string[];
   featured?: boolean;
+  collectible?: CollectibleCardDetails;
+};
+
+export type ProductCatalog = {
+  version: number;
+  mode: GameMode;
+  generatedAt: string;
+  productCount: number;
+  categories: CatalogCategory[];
+  products: Product[];
+};
+
+export type ProductImageStatus = "placeholder" | "unreviewed" | "approved" | "rejected";
+
+export type ProductImageRecord = {
+  productId: string;
+  path: string;
+  alt: string;
+  sourceUrl: string;
+  creator?: string;
+  license: string;
+  licenseUrl?: string;
+  status: ProductImageStatus;
+  width?: number;
+  height?: number;
+  reviewedAt?: string;
+};
+
+export type ImageManifest = {
+  version: number;
+  generatedAt: string;
+  images: ProductImageRecord[];
 };
 
 export type CartItem = {
@@ -38,6 +84,8 @@ export type CartItem = {
 
 export type BudgetSource =
   | { kind: "classic" }
+  | { kind: "everyday-preset"; presetId: string; label: string }
+  | { kind: "custom"; label: string }
   | { kind: "person"; personId: string; personName: string }
   | {
       kind: "stock";
@@ -48,6 +96,7 @@ export type BudgetSource =
     };
 
 export type GameSetup = {
+  mode: GameMode;
   startingBudgetSek: number;
   currency: CurrencyCode;
   budgetSource: BudgetSource;
@@ -59,8 +108,9 @@ export type CompletedResult = GameSetup & {
   completedAt: string;
 };
 
-export type SharePayloadV2 = {
-  v: 2;
+export type SharePayloadV3 = {
+  v: 3;
+  m: GameMode;
   n: string;
   i: Array<[string, number]>;
   b: number;

@@ -14,11 +14,11 @@ export const metadata: Metadata = {
     template: "%s | Spend a Billion",
   },
   description:
-    "Välj en miljard, en känd förmögenhet eller din egen aktiedröm. Shoppa Bugatti, privatjet, yachter och andra drömköp – helt på låtsas.",
+    "Välj miljardärsläge eller vardagsläge och shoppa bland 20 000 produkter – helt på låtsas.",
   applicationName: "Spend a Billion",
   openGraph: {
     title: "Spend a Billion – Hur rik vill du vara?",
-    description: "Välj din förmögenhet, byt valuta och bygg världens mest överdrivna fantasivarukorg.",
+    description: "Välj spelläge, budget och valuta. Bygg en fantasivarukorg bland 20 000 produkter.",
     type: "website",
     locale: "sv_SE",
     siteName: "Spend a Billion",
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary",
     title: "Spend a Billion – Hur rik vill du vara?",
-    description: "Välj din förmögenhet och shoppa bort den på några minuter.",
+    description: "Välj miljardärsläge eller vardagsläge och shoppa bort din fantasibudget.",
   },
   robots: { index: true, follow: true },
 };

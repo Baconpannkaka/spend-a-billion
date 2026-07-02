@@ -1,5 +1,7 @@
 "use client";
 
+import { useCatalogContext } from "@/catalog/catalog-context";
+import { isCurrencyCode } from "@/data/currencies";
 import {
   addToCart,
   canAddQuantity,
@@ -12,19 +14,18 @@ import {
   setCartQuantity,
 } from "@/lib/cart";
 import { clampBudgetSek, createClassicSetup, getBudgetSourceLabel, isBudgetSource } from "@/lib/budget";
-import { STARTING_BUDGET_SEK } from "@/lib/constants";
 import { clearGame, loadGame, saveGame } from "@/lib/storage";
-import { isCurrencyCode } from "@/data/currencies";
-import { products } from "@/data/products";
-import type { BudgetSource, CartItem, CompletedResult, CurrencyCode, GameSetup } from "@/types";
+import type { BudgetSource, CartItem, CompletedResult, CurrencyCode, GameMode, GameSetup, Product } from "@/types";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
 type AddResult = { ok: true } | { ok: false; missing: number };
 
 type GameContextValue = {
   hydrated: boolean;
+  catalogReady: boolean;
   name: string;
   setName: (name: string) => void;
+  mode: GameMode;
   cart: CartItem[];
   introShown: boolean;
   setIntroShown: (shown: boolean) => void;
@@ -34,41 +35,44 @@ type GameContextValue = {
   budgetSource: BudgetSource;
   budgetSourceLabel: string;
   hasStarted: boolean;
+  products: Product[];
   total: number;
   remaining: number;
   spentRatio: number;
   totalQuantity: number;
   setCurrency: (currency: CurrencyCode) => void;
-  startGame: (setup: GameSetup) => void;
+  startGame: (setup: GameSetup) => Promise<void>;
   addItem: (productId: string, quantity?: number) => AddResult;
   updateQuantity: (productId: string, quantity: number) => AddResult;
   removeItem: (productId: string) => void;
   completePurchase: () => CompletedResult;
   resetGame: () => void;
-  replaceWithResult: (result: Omit<CompletedResult, "completedAt">) => void;
+  startChallenge: (result: Omit<CompletedResult, "completedAt">) => Promise<void>;
 };
 
 const GameContext = createContext<GameContextValue | null>(null);
 const defaultSetup = createClassicSetup("SEK");
 
-function normalizeCompletedResult(
-  value: unknown,
-  fallback: { startingBudgetSek: number; currency: CurrencyCode; budgetSource: BudgetSource },
-): CompletedResult | null {
+function isGameMode(value: unknown): value is GameMode {
+  return value === "luxury" || value === "everyday";
+}
+
+function normalizeCompletedResult(value: unknown, products: Product[], fallback: GameSetup): CompletedResult | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Partial<CompletedResult>;
   if (typeof candidate.name !== "string" || !Array.isArray(candidate.cart)) return null;
-
-  const startingBudgetSek = typeof candidate.startingBudgetSek === "number" && Number.isFinite(candidate.startingBudgetSek) && candidate.startingBudgetSek > 0
+  const mode = isGameMode(candidate.mode) ? candidate.mode : fallback.mode;
+  if (mode !== fallback.mode) return null;
+  const startingBudgetSek = typeof candidate.startingBudgetSek === "number" && candidate.startingBudgetSek > 0
     ? clampBudgetSek(candidate.startingBudgetSek)
     : fallback.startingBudgetSek;
   const currency = isCurrencyCode(candidate.currency) ? candidate.currency : fallback.currency;
   const budgetSource = isBudgetSource(candidate.budgetSource) ? candidate.budgetSource : fallback.budgetSource;
   const cart = sanitizeCartToBudget(candidate.cart, products, startingBudgetSek);
   if (cart.length === 0) return null;
-
   return {
-    name: candidate.name.trim().slice(0, 60) || "Future Billionaire",
+    name: candidate.name.trim().slice(0, 60) || "Future Shopper",
+    mode,
     cart,
     completedAt: typeof candidate.completedAt === "string" ? candidate.completedAt : new Date(0).toISOString(),
     startingBudgetSek,
@@ -78,8 +82,10 @@ function normalizeCompletedResult(
 }
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
+  const { catalogs, ensureCatalog } = useCatalogContext();
   const [hydrated, setHydrated] = useState(false);
-  const [name, setNameState] = useState("Future Billionaire");
+  const [name, setNameState] = useState("Future Shopper");
+  const [mode, setMode] = useState<GameMode>(defaultSetup.mode);
   const [cart, setCart] = useState<CartItem[]>([]);
   const cartRef = useRef<CartItem[]>([]);
   const [introShown, setIntroShown] = useState(false);
@@ -90,41 +96,51 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [budgetSource, setBudgetSource] = useState<BudgetSource>(defaultSetup.budgetSource);
   const [hasStarted, setHasStarted] = useState(false);
 
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      const stored = loadGame();
-      if (stored) {
-        const loadedBudget = typeof stored.startingBudgetSek === "number" && Number.isFinite(stored.startingBudgetSek) && stored.startingBudgetSek > 0
-          ? clampBudgetSek(stored.startingBudgetSek)
-          : STARTING_BUDGET_SEK;
-        const loadedCurrency = isCurrencyCode(stored.currency) ? stored.currency : "SEK";
-        const loadedSource = isBudgetSource(stored.budgetSource) ? stored.budgetSource : { kind: "classic" } as const;
-        const storedCart = sanitizeCartToBudget(Array.isArray(stored.cart) ? stored.cart : [], products, loadedBudget);
+  const products = useMemo(() => catalogs[mode]?.products ?? [], [catalogs, mode]);
+  const productsRef = useRef<Product[]>([]);
+  useEffect(() => { productsRef.current = products; }, [products]);
 
-        setNameState(typeof stored.name === "string" ? stored.name.slice(0, 60) : "Future Billionaire");
-        cartRef.current = storedCart;
-        setCart(storedCart);
-        setIntroShown(Boolean(stored.introShown));
-        setCompletedResult(normalizeCompletedResult(stored.completedResult, {
-          startingBudgetSek: loadedBudget,
-          currency: loadedCurrency,
-          budgetSource: loadedSource,
-        }));
-        setStartingBudgetSek(loadedBudget);
-        budgetRef.current = loadedBudget;
-        setCurrencyState(loadedCurrency);
-        setBudgetSource(loadedSource);
-        setHasStarted(Boolean(stored.hasStarted) || storedCart.length > 0);
-      }
+  useEffect(() => {
+    let cancelled = false;
+    async function hydrate() {
+      const stored = loadGame();
+      const loadedMode: GameMode = isGameMode(stored?.mode) ? stored.mode : "luxury";
+      const loadedCurrency = isCurrencyCode(stored?.currency) ? stored.currency : "SEK";
+      const loadedBudget = typeof stored?.startingBudgetSek === "number" && stored.startingBudgetSek > 0
+        ? clampBudgetSek(stored.startingBudgetSek)
+        : defaultSetup.startingBudgetSek;
+      const loadedSource = isBudgetSource(stored?.budgetSource) ? stored.budgetSource : defaultSetup.budgetSource;
+      const shouldLoadCatalog = Boolean(stored?.hasStarted)
+        || (Array.isArray(stored?.cart) && stored.cart.length > 0)
+        || Boolean(stored?.completedResult);
+      const catalog = shouldLoadCatalog ? await ensureCatalog(loadedMode).catch(() => null) : null;
+      if (cancelled) return;
+      const catalogProducts = catalog?.products ?? [];
+      const storedCart = sanitizeCartToBudget(Array.isArray(stored?.cart) ? stored.cart : [], catalogProducts, loadedBudget);
+      const setup: GameSetup = { mode: loadedMode, startingBudgetSek: loadedBudget, currency: loadedCurrency, budgetSource: loadedSource };
+
+      setMode(loadedMode);
+      setCurrencyState(loadedCurrency);
+      setStartingBudgetSek(loadedBudget);
+      budgetRef.current = loadedBudget;
+      setBudgetSource(loadedSource);
+      setNameState(typeof stored?.name === "string" ? stored.name.slice(0, 60) : "Future Shopper");
+      cartRef.current = storedCart;
+      setCart(storedCart);
+      setIntroShown(Boolean(stored?.introShown));
+      setCompletedResult(normalizeCompletedResult(stored?.completedResult, catalogProducts, setup));
+      setHasStarted(Boolean(stored?.hasStarted) || storedCart.length > 0);
       setHydrated(true);
-    }, 0);
-    return () => window.clearTimeout(timeoutId);
-  }, []);
+    }
+    void hydrate();
+    return () => { cancelled = true; };
+  }, [ensureCatalog]);
 
   useEffect(() => {
     if (!hydrated) return;
     saveGame({
       name,
+      mode,
       cart,
       introShown,
       completedResult,
@@ -134,19 +150,23 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       budgetSource,
       hasStarted,
     });
-  }, [hydrated, name, cart, introShown, completedResult, startingBudgetSek, currency, budgetSource, hasStarted]);
+  }, [hydrated, name, mode, cart, introShown, completedResult, startingBudgetSek, currency, budgetSource, hasStarted]);
 
-  const total = useMemo(() => getCartTotal(cart, products), [cart]);
-  const remaining = useMemo(() => getRemainingBudget(cart, products, startingBudgetSek), [cart, startingBudgetSek]);
-  const spentRatio = useMemo(() => getSpentRatio(cart, products, startingBudgetSek), [cart, startingBudgetSek]);
+  const total = useMemo(() => getCartTotal(cart, products), [cart, products]);
+  const remaining = useMemo(() => getRemainingBudget(cart, products, startingBudgetSek), [cart, products, startingBudgetSek]);
+  const spentRatio = useMemo(() => getSpentRatio(cart, products, startingBudgetSek), [cart, products, startingBudgetSek]);
   const totalQuantity = useMemo(() => getTotalQuantity(cart), [cart]);
   const budgetSourceLabel = useMemo(() => getBudgetSourceLabel(budgetSource), [budgetSource]);
+  const catalogReady = products.length === 10_000;
 
   const setName = useCallback((value: string) => setNameState(value.slice(0, 60)), []);
   const setCurrency = useCallback((value: CurrencyCode) => setCurrencyState(value), []);
 
-  const startGame = useCallback((setup: GameSetup) => {
+  const startGame = useCallback(async (setup: GameSetup) => {
+    const catalog = await ensureCatalog(setup.mode);
     const safeBudget = clampBudgetSek(setup.startingBudgetSek);
+    productsRef.current = catalog.products;
+    setMode(setup.mode);
     budgetRef.current = safeBudget;
     setStartingBudgetSek(safeBudget);
     setCurrencyState(setup.currency);
@@ -156,26 +176,27 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setCompletedResult(null);
     setIntroShown(false);
     setHasStarted(true);
-  }, []);
+  }, [ensureCatalog]);
 
   const addItem = useCallback((productId: string, quantity = 1): AddResult => {
     const current = cartRef.current;
-    const product = products.find((entry) => entry.id === productId);
-    const currentTotal = getCartTotal(current, products);
-    if (!product || !canAddQuantity(current, products, productId, quantity, budgetRef.current)) {
-      const missing = product ? Math.max(0, currentTotal + product.priceSek * quantity - budgetRef.current) : 0;
-      return { ok: false, missing };
+    const activeProducts = productsRef.current;
+    const product = activeProducts.find((entry) => entry.id === productId);
+    const safeQuantity = Math.max(1, Math.floor(quantity));
+    const currentTotal = getCartTotal(current, activeProducts);
+    if (!product || !canAddQuantity(current, activeProducts, productId, safeQuantity, budgetRef.current)) {
+      return { ok: false, missing: product ? Math.max(0, currentTotal + product.priceSek * safeQuantity - budgetRef.current) : 0 };
     }
-    const next = addToCart(current, productId, quantity);
+    const next = addToCart(current, productId, safeQuantity);
     cartRef.current = next;
     setCart(next);
     setCompletedResult(null);
-    setHasStarted(true);
     return { ok: true };
   }, []);
 
   const updateQuantity = useCallback((productId: string, quantity: number): AddResult => {
     const current = cartRef.current;
+    const activeProducts = productsRef.current;
     if (quantity <= 0) {
       const next = setCartQuantity(current, productId, 0);
       cartRef.current = next;
@@ -184,11 +205,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       return { ok: true };
     }
     const currentQuantity = current.find((item) => item.productId === productId)?.quantity ?? 0;
-    if (quantity > currentQuantity && !canAddQuantity(current, products, productId, quantity - currentQuantity, budgetRef.current)) {
-      const product = products.find((entry) => entry.id === productId);
-      const currentTotal = getCartTotal(current, products);
-      const missing = product ? Math.max(0, currentTotal + product.priceSek * (quantity - currentQuantity) - budgetRef.current) : 0;
-      return { ok: false, missing };
+    if (quantity > currentQuantity && !canAddQuantity(current, activeProducts, productId, quantity - currentQuantity, budgetRef.current)) {
+      const product = activeProducts.find((entry) => entry.id === productId);
+      const currentTotal = getCartTotal(current, activeProducts);
+      return { ok: false, missing: product ? Math.max(0, currentTotal + product.priceSek * (quantity - currentQuantity) - budgetRef.current) : 0 };
     }
     const next = setCartQuantity(current, productId, quantity);
     cartRef.current = next;
@@ -206,7 +226,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const completePurchase = useCallback(() => {
     const result: CompletedResult = {
-      name: name.trim() || "Future Billionaire",
+      name: name.trim() || "Future Shopper",
+      mode,
       cart: cartRef.current,
       completedAt: new Date().toISOString(),
       startingBudgetSek: budgetRef.current,
@@ -215,41 +236,38 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     };
     setCompletedResult(result);
     return result;
-  }, [name, currency, budgetSource]);
+  }, [name, mode, currency, budgetSource]);
 
   const resetGame = useCallback(() => {
     clearGame();
-    setNameState("Future Billionaire");
+    setNameState("Future Shopper");
     cartRef.current = [];
     setCart([]);
     setIntroShown(false);
     setCompletedResult(null);
-    budgetRef.current = STARTING_BUDGET_SEK;
-    setStartingBudgetSek(STARTING_BUDGET_SEK);
-    setCurrencyState("SEK");
-    setBudgetSource({ kind: "classic" });
+    budgetRef.current = defaultSetup.startingBudgetSek;
+    setStartingBudgetSek(defaultSetup.startingBudgetSek);
+    setBudgetSource(defaultSetup.budgetSource);
     setHasStarted(false);
   }, []);
 
-  const replaceWithResult = useCallback((result: Omit<CompletedResult, "completedAt">) => {
-    setNameState(result.name.slice(0, 60) || "Future Billionaire");
-    const safeBudget = clampBudgetSek(result.startingBudgetSek);
-    const safeCart = sanitizeCartToBudget(result.cart, products, safeBudget);
-    cartRef.current = safeCart;
-    setCart(safeCart);
-    budgetRef.current = safeBudget;
-    setStartingBudgetSek(safeBudget);
-    setCurrencyState(result.currency);
-    setBudgetSource(result.budgetSource);
-    setCompletedResult(null);
+  const startChallenge = useCallback(async (result: Omit<CompletedResult, "completedAt">) => {
+    await startGame({
+      mode: result.mode,
+      startingBudgetSek: result.startingBudgetSek,
+      currency: result.currency,
+      budgetSource: result.budgetSource,
+    });
+    setNameState("Future Challenger");
     setIntroShown(true);
-    setHasStarted(true);
-  }, []);
+  }, [startGame]);
 
   const value = useMemo<GameContextValue>(() => ({
     hydrated,
+    catalogReady,
     name,
     setName,
+    mode,
     cart,
     introShown,
     setIntroShown,
@@ -259,6 +277,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     budgetSource,
     budgetSourceLabel,
     hasStarted,
+    products,
     total,
     remaining,
     spentRatio,
@@ -270,8 +289,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     removeItem,
     completePurchase,
     resetGame,
-    replaceWithResult,
-  }), [hydrated, name, setName, cart, introShown, completedResult, startingBudgetSek, currency, budgetSource, budgetSourceLabel, hasStarted, total, remaining, spentRatio, totalQuantity, setCurrency, startGame, addItem, updateQuantity, removeItem, completePurchase, resetGame, replaceWithResult]);
+    startChallenge,
+  }), [hydrated, catalogReady, name, setName, mode, cart, introShown, completedResult, startingBudgetSek, currency, budgetSource, budgetSourceLabel, hasStarted, products, total, remaining, spentRatio, totalQuantity, setCurrency, startGame, addItem, updateQuantity, removeItem, completePurchase, resetGame, startChallenge]);
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 }

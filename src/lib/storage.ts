@@ -1,8 +1,9 @@
 import { LEGACY_STORAGE_KEY, STORAGE_KEY } from "@/lib/constants";
-import type { BudgetSource, CartItem, CompletedResult, CurrencyCode } from "@/types";
+import type { BudgetSource, CartItem, CompletedResult, CurrencyCode, GameMode } from "@/types";
 
 export type StoredGame = {
   name: string;
+  mode: GameMode;
   cart: CartItem[];
   introShown: boolean;
   completedResult: CompletedResult | null;
@@ -38,7 +39,7 @@ export function saveGame(game: StoredGame): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(game));
   } catch {
-    // The game remains usable even if storage is unavailable.
+    // Spelet fungerar även när lagring är blockerad.
   }
 }
 
@@ -48,6 +49,6 @@ export function clearGame(): void {
     window.localStorage.removeItem(STORAGE_KEY);
     window.localStorage.removeItem(LEGACY_STORAGE_KEY);
   } catch {
-    // Ignore storage failures during reset.
+    // Återställ resten av klienttillståndet även om lagringen är blockerad.
   }
 }

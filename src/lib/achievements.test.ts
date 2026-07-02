@@ -1,19 +1,13 @@
-import { expect, it } from "vitest";
 import { getAchievements } from "@/lib/achievements";
-import { products } from "@/data/products";
-import { STARTING_BUDGET_SEK } from "@/lib/constants";
+import type { Product } from "@/types";
+import { describe, expect, it } from "vitest";
 
-it("låser upp relevanta achievements", () => {
-  const achievements = getAchievements([
-    { productId: "car-01", quantity: 1 },
-    { productId: "car-02", quantity: 1 },
-    { productId: "air-06", quantity: 1 },
-    { productId: "boat-01", quantity: 1 },
-    { productId: "watch-01", quantity: 3 },
-  ], products, STARTING_BUDGET_SEK);
-  const ids = achievements.map((entry) => entry.id);
-  expect(ids).toContain("bugatti");
-  expect(ids).toContain("flyg");
-  expect(ids).toContain("hav");
-  expect(ids).toContain("klocka");
+const card: Product = { id: "card", mode: "luxury", slug: "card", name: "Pokémon PSA", categoryId: "samlarobjekt", categoryLabel: "Samlarobjekt", subcategoryId: "samlarkort", subcategoryLabel: "Samlarkort", priceSek: 900, shortDescription: "", description: "", facts: [], tags: [], collectible: { franchise: "Pokémon", set: "Base", year: "1999", cardNumber: "4", language: "Engelska", gradingCompany: "PSA", grade: 10 } };
+
+describe("achievements", () => {
+  it("upptäcker PSA-kort och nästan perfekt spendering", () => {
+    const ids = getAchievements([{ productId: "card", quantity: 1 }], [card], 900).map((achievement) => achievement.id);
+    expect(ids).toContain("psa");
+    expect(ids).toContain("perfekt");
+  });
 });

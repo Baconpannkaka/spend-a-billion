@@ -4,131 +4,64 @@ import { BudgetBar } from "@/components/budget-bar";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ProductCard } from "@/components/product-card";
 import { useGame } from "@/context/game-context";
-import { useToast } from "@/context/toast-context";
-import { categoryLabels, products } from "@/data/products";
-import { Search, SlidersHorizontal, RotateCcw } from "lucide-react";
-import { useMemo, useState } from "react";
+import { CATALOG_PAGE_SIZE } from "@/lib/constants";
+import { filterAndSortProducts, type CatalogSort } from "@/lib/catalog-filter";
+import { Search, SlidersHorizontal, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { ProductCategory } from "@/types";
-
-type SortOption = "recommended" | "cheap" | "expensive" | "name";
+import { useMemo, useState } from "react";
 
 export function ShopClient() {
-  const { remaining, resetGame, introShown, setIntroShown, hydrated, budgetSourceLabel } = useGame();
   const router = useRouter();
-  const { showToast } = useToast();
+  const { hydrated, hasStarted, catalogReady, mode, products, remaining, resetGame, budgetSourceLabel } = useGame();
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<ProductCategory | "alla">("alla");
-  const [sort, setSort] = useState<SortOption>("recommended");
+  const [category, setCategory] = useState("all");
+  const [subcategory, setSubcategory] = useState("all");
+  const [sort, setSort] = useState<CatalogSort>("recommended");
   const [affordableOnly, setAffordableOnly] = useState(false);
+  const [page, setPage] = useState(1);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const filtered = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase("sv");
-    const result = products.filter((product) => {
-      const matchesSearch = !query || `${product.name} ${product.brand ?? ""} ${product.shortDescription}`.toLocaleLowerCase("sv").includes(query);
-      const matchesCategory = category === "alla" || product.category === category;
-      const matchesBudget = !affordableOnly || product.priceSek <= remaining;
-      return matchesSearch && matchesCategory && matchesBudget;
-    });
+  const categories = useMemo(() => {
+    const map = new Map<string, { id: string; label: string; subcategories: Map<string, string> }>();
+    for (const product of products) {
+      const current = map.get(product.categoryId) ?? { id: product.categoryId, label: product.categoryLabel, subcategories: new Map<string, string>() };
+      current.subcategories.set(product.subcategoryId, product.subcategoryLabel);
+      map.set(product.categoryId, current);
+    }
+    return Array.from(map.values());
+  }, [products]);
 
-    return [...result].sort((a, b) => {
-      if (sort === "cheap") return a.priceSek - b.priceSek;
-      if (sort === "expensive") return b.priceSek - a.priceSek;
-      if (sort === "name") return a.name.localeCompare(b.name, "sv");
-      return Number(Boolean(b.featured)) - Number(Boolean(a.featured));
-    });
-  }, [search, category, sort, affordableOnly, remaining]);
+  const subcategories = useMemo(() => category === "all" ? [] : Array.from(categories.find((item) => item.id === category)?.subcategories.entries() ?? []), [categories, category]);
+
+
+  const filtered = useMemo(() => filterAndSortProducts(products, {
+    search,
+    categoryId: category,
+    subcategoryId: subcategory,
+    affordableOnly,
+    remainingBudgetSek: remaining,
+    sort,
+  }), [products, search, category, subcategory, affordableOnly, remaining, sort]);
+
+  const pages = Math.max(1, Math.ceil(filtered.length / CATALOG_PAGE_SIZE));
+  const safePage = Math.min(page, pages);
+  const visible = filtered.slice((safePage - 1) * CATALOG_PAGE_SIZE, safePage * CATALOG_PAGE_SIZE);
+
+  if (!hydrated || (hasStarted && !catalogReady)) return <div className="shell min-h-[70vh] py-12"><div className="h-28 animate-pulse rounded-xl bg-white/5" /><div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">{Array.from({ length: 8 }, (_, index) => <div key={index} className="h-72 animate-pulse rounded-xl bg-white/5" />)}</div></div>;
+  if (!hasStarted) return <section className="bg-[var(--paper)] py-24 text-center text-[var(--ink)]"><div className="shell max-w-xl"><h1 className="font-display text-5xl">Välj ett shoppingläge först</h1><p className="mt-4 text-black/55">Vi behöver veta vilken katalog och budget du vill använda.</p><Link href="/" className="primary-button mt-6">Till startsidan</Link></div></section>;
 
   return (
     <>
-      <section className="border-b border-white/10 py-12">
-        <div className="shell">
-          {hydrated && !introShown && (
-            <div className="mb-8 flex flex-col justify-between gap-4 rounded-2xl border border-[var(--gold)]/30 bg-[var(--gold)]/10 p-5 sm:flex-row sm:items-center">
-              <div>
-                <p className="font-display text-3xl text-white">{budgetSourceLabel} är redo.</p>
-                <p className="mt-1 text-sm text-white/60">Lägg till vad du vill. Vi ser till att du aldrig kan spendera mer än du har.</p>
-              </div>
-              <button type="button" onClick={() => setIntroShown(true)} className="min-h-11 shrink-0 rounded-full bg-[var(--gold)] px-5 font-bold text-black focus-ring">Jag är redo</button>
-            </div>
-          )}
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--gold)]">40 saker du absolut behöver</p>
-          <div className="mt-3 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-            <div>
-              <h1 className="font-display text-6xl leading-none text-white md:text-8xl">Shoppa utan rimliga gränser</h1>
-              <p className="mt-4 max-w-2xl text-white/55">Priserna är ungefärliga underhållningsvärden. Smaken däremot är helt och hållet din.</p>
-            </div>
-            <button type="button" onClick={() => setConfirmOpen(true)} className="inline-flex min-h-11 items-center gap-2 self-start rounded-full border border-white/15 px-4 text-sm text-white/70 hover:bg-white/5 hover:text-white focus-ring">
-              <RotateCcw className="h-4 w-4" /> Återställ spelet
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <div className="sticky top-18 z-40 border-b border-white/10 bg-[rgba(12,12,11,.94)] py-3 backdrop-blur-xl">
-        <div className="shell"><BudgetBar compact /></div>
-      </div>
-
-      <section className="bg-[var(--paper)] py-10 text-[var(--ink)]">
-        <div className="shell">
-          <div className="rounded-2xl border border-black/10 bg-white/55 p-4 shadow-sm">
-            <div className="grid gap-3 lg:grid-cols-[1.4fr_.8fr_.8fr_auto]">
-              <label className="relative block">
-                <span className="sr-only">Sök produkter</span>
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-black/40" />
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Sök Bugatti, yacht, klocka…" className="h-12 w-full rounded-xl border border-black/10 bg-white pl-12 pr-4 outline-none focus:border-[var(--gold-dark)] focus:ring-2 focus:ring-[var(--gold)]/25" />
-              </label>
-              <label>
-                <span className="sr-only">Kategori</span>
-                <select value={category} onChange={(event) => setCategory(event.target.value as ProductCategory | "alla")} className="h-12 w-full rounded-xl border border-black/10 bg-white px-4 outline-none focus:border-[var(--gold-dark)] focus:ring-2 focus:ring-[var(--gold)]/25">
-                  <option value="alla">Alla kategorier</option>
-                  {Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select>
-              </label>
-              <label>
-                <span className="sr-only">Sortering</span>
-                <select value={sort} onChange={(event) => setSort(event.target.value as SortOption)} className="h-12 w-full rounded-xl border border-black/10 bg-white px-4 outline-none focus:border-[var(--gold-dark)] focus:ring-2 focus:ring-[var(--gold)]/25">
-                  <option value="recommended">Rekommenderat</option>
-                  <option value="cheap">Billigast först</option>
-                  <option value="expensive">Dyrast först</option>
-                  <option value="name">Namn</option>
-                </select>
-              </label>
-              <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border border-black/10 bg-white px-4 text-sm font-semibold">
-                <input type="checkbox" checked={affordableOnly} onChange={(event) => setAffordableOnly(event.target.checked)} className="h-4 w-4 accent-[var(--gold-dark)]" />
-                Jag har råd
-              </label>
-            </div>
-          </div>
-
-          <div className="mt-6 flex items-center justify-between gap-4">
-            <p className="text-sm text-black/50">{filtered.length} produkter</p>
-            <div className="flex items-center gap-2 text-sm text-black/45"><SlidersHorizontal className="h-4 w-4" /> Filtrera den privata katalogen</div>
-          </div>
-
-          {filtered.length > 0 ? (
-            <div className="mt-6 grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-              {filtered.map((product) => <ProductCard key={product.id} product={product} />)}
-            </div>
-          ) : (
-            <div className="mt-8 rounded-2xl border border-dashed border-black/20 bg-white/50 px-6 py-16 text-center">
-              <h2 className="font-display text-4xl">Inget lyxigt hittades</h2>
-              <p className="mt-2 text-black/55">Prova en annan sökning eller visa även sådant du inte längre har råd med.</p>
-              <button type="button" onClick={() => { setSearch(""); setCategory("alla"); setAffordableOnly(false); }} className="mt-5 rounded-full bg-[var(--ink)] px-5 py-3 font-semibold text-white focus-ring">Rensa filter</button>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <ConfirmDialog
-        open={confirmOpen}
-        title="Välja en ny förmögenhet?"
-        description="Din varukorg, ditt namn, din valda förmögenhet och ditt färdiga resultat raderas från den här webbläsaren."
-        confirmLabel="Ja, återställ allt"
-        onClose={() => setConfirmOpen(false)}
-        onConfirm={() => { resetGame(); showToast("Spelet är återställt. Välj en ny förmögenhet.", "success"); router.push("/"); }}
-      />
+      <section className="border-b border-white/10 py-7"><div className="shell flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="eyebrow">{mode === "luxury" ? "Miljardärsläge" : "Vardagsläge"} · 10 000 produkter</p><h1 className="mt-2 font-display text-4xl text-white md:text-5xl">{mode === "luxury" ? "Shoppa utan rimliga gränser" : "Hur långt räcker din kassa?"}</h1><p className="mt-2 text-sm text-white/45">{budgetSourceLabel}</p></div><button type="button" onClick={() => setConfirmOpen(true)} className="secondary-dark-button"><RotateCcw className="h-4 w-4" /> Nytt spel</button></div></section>
+      <div className="sticky top-16 z-40 border-b border-white/10 bg-[rgba(12,12,11,.96)] py-2.5 backdrop-blur-xl"><div className="shell"><BudgetBar /></div></div>
+      <section className="bg-[var(--paper)] py-7 text-[var(--ink)]"><div className="shell">
+        <div className="filter-panel"><label className="relative block lg:col-span-2"><span className="sr-only">Sök produkter</span><Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-black/35" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder={mode === "luxury" ? "Sök Bugatti, PSA 10, yacht…" : "Sök mobil, mat, soffa…"} className="field pl-10" /></label><label><span className="sr-only">Kategori</span><select value={category} onChange={(event) => { setCategory(event.target.value); setSubcategory("all"); setPage(1); }} className="field"><option value="all">Alla kategorier</option>{categories.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label><span className="sr-only">Underkategori</span><select value={subcategory} onChange={(event) => { setSubcategory(event.target.value); setPage(1); }} disabled={category === "all"} className="field disabled:opacity-45"><option value="all">Alla underkategorier</option>{subcategories.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label><label><span className="sr-only">Sortering</span><select value={sort} onChange={(event) => { setSort(event.target.value as CatalogSort); setPage(1); }} className="field"><option value="recommended">Rekommenderat</option><option value="cheap">Billigast först</option><option value="expensive">Dyrast först</option><option value="name">Namn</option></select></label><label className="flex h-10 items-center gap-2 rounded-md border border-black/10 bg-white px-3 text-xs font-semibold"><input type="checkbox" checked={affordableOnly} onChange={(event) => { setAffordableOnly(event.target.checked); setPage(1); }} className="h-4 w-4 accent-black" /> Visa bara sådant jag har råd med</label></div>
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-black/50"><strong className="text-black">{filtered.length.toLocaleString("sv-SE")}</strong> träffar · sida {safePage} av {pages}</p><p className="flex items-center gap-2 text-xs text-black/40"><SlidersHorizontal className="h-4 w-4" /> Katalogen laddas 48 produkter åt gången</p></div>
+        {visible.length > 0 ? <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">{visible.map((product) => <ProductCard key={product.id} product={product} />)}</div> : <div className="mt-6 rounded-xl border border-dashed border-black/20 bg-white/60 px-6 py-14 text-center"><h2 className="font-display text-3xl">Inga produkter hittades</h2><p className="mt-2 text-sm text-black/50">Rensa något filter eller prova en bredare sökning.</p></div>}
+        {pages > 1 && <nav className="mt-8 flex items-center justify-center gap-2" aria-label="Sidnavigering"><button type="button" disabled={safePage <= 1} onClick={() => { setPage(safePage - 1); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="page-button"><ChevronLeft className="h-4 w-4" /> Föregående</button><span className="px-3 text-sm font-semibold">{safePage} / {pages}</span><button type="button" disabled={safePage >= pages} onClick={() => { setPage(safePage + 1); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="page-button">Nästa <ChevronRight className="h-4 w-4" /></button></nav>}
+      </div></section>
+      <ConfirmDialog open={confirmOpen} title="Starta ett nytt spel?" description="Varukorgen och det färdiga resultatet rensas. Din valda valuta ligger kvar." confirmLabel="Ja, börja om" onClose={() => setConfirmOpen(false)} onConfirm={() => { resetGame(); router.push("/"); }} />
     </>
   );
 }

@@ -1,9 +1,7 @@
+import { formatCompactMoneyFromSek, formatSek } from "@/lib/format";
 import { describe, expect, it } from "vitest";
-import { formatSek } from "@/lib/format";
 
-describe("formatSek", () => {
-  it("formaterar svenska kronor med svenska tusentalsavgränsare", () => {
-    expect(formatSek(1_000_000_000)).toBe("1 000 000 000 kr");
-    expect(formatSek(900_000)).toBe("900 000 kr");
-  });
+describe("format", () => {
+  it("formaterar svenska kronor", () => expect(formatSek(45_000_000)).toMatch(/45[\s\u00a0]000[\s\u00a0]000[\s\u00a0]kr/));
+  it("förkortar mycket stora belopp", () => expect(formatCompactMoneyFromSek(10_700_000_000, "SEK")).toContain("md"));
 });

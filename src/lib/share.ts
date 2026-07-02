@@ -1,7 +1,7 @@
-import { isBudgetSource } from "@/lib/budget";
-import { MAX_BUDGET_SEK, MAX_SHARED_QUANTITY, SHARE_VERSION, STARTING_BUDGET_SEK } from "@/lib/constants";
 import { isCurrencyCode } from "@/data/currencies";
-import type { BudgetSource, CartItem, CurrencyCode, Product, SharePayloadV2 } from "@/types";
+import { isBudgetSource } from "@/lib/budget";
+import { MAX_BUDGET_SEK, MAX_SHARED_QUANTITY, SHARE_VERSION } from "@/lib/constants";
+import type { BudgetSource, CartItem, CurrencyCode, GameMode, Product, SharePayloadV3 } from "@/types";
 
 function toBase64Url(text: string): string {
   const bytes = new TextEncoder().encode(text);
@@ -18,7 +18,12 @@ function fromBase64Url(encoded: string): string {
   return new TextDecoder().decode(bytes);
 }
 
+function isGameMode(value: unknown): value is GameMode {
+  return value === "luxury" || value === "everyday";
+}
+
 export function encodeShareData(
+  mode: GameMode,
   name: string,
   cart: CartItem[],
   budgetSek: number,
@@ -26,9 +31,10 @@ export function encodeShareData(
   budgetSource: BudgetSource,
   timestamp = Date.now(),
 ): string {
-  const payload: SharePayloadV2 = {
+  const payload: SharePayloadV3 = {
     v: SHARE_VERSION,
-    n: name.trim().slice(0, 60) || "Future Billionaire",
+    m: mode,
+    n: name.trim().slice(0, 60) || "Future Shopper",
     i: cart.map((item) => [item.productId, item.quantity]),
     b: Math.min(MAX_BUDGET_SEK, Math.max(1, Math.round(budgetSek))),
     c: currency,
@@ -38,30 +44,37 @@ export function encodeShareData(
   return toBase64Url(JSON.stringify(payload));
 }
 
+export function peekShareMode(encoded: string): GameMode | null {
+  try {
+    if (!encoded || encoded.length > 40_000) return null;
+    const parsed: unknown = JSON.parse(fromBase64Url(encoded));
+    if (!parsed || typeof parsed !== "object") return null;
+    const candidate = parsed as Partial<SharePayloadV3>;
+    return candidate.v === SHARE_VERSION && isGameMode(candidate.m) ? candidate.m : null;
+  } catch {
+    return null;
+  }
+}
+
 export function decodeShareData(
   encoded: string,
   products: Product[],
-): { name: string; cart: CartItem[]; timestamp?: number; startingBudgetSek: number; currency: CurrencyCode; budgetSource: BudgetSource } | null {
+): { mode: GameMode; name: string; cart: CartItem[]; timestamp?: number; startingBudgetSek: number; currency: CurrencyCode; budgetSource: BudgetSource } | null {
   try {
-    if (!encoded || encoded.length > 30_000) return null;
+    if (!encoded || encoded.length > 40_000) return null;
     const parsed: unknown = JSON.parse(fromBase64Url(encoded));
     if (!parsed || typeof parsed !== "object") return null;
     const candidate = parsed as Record<string, unknown>;
+    if (candidate.v !== SHARE_VERSION || !isGameMode(candidate.m) || typeof candidate.n !== "string" || !Array.isArray(candidate.i)) return null;
+    if (typeof candidate.b !== "number" || !Number.isFinite(candidate.b) || candidate.b <= 0) return null;
+    if (!isCurrencyCode(candidate.c) || !isBudgetSource(candidate.s)) return null;
 
-    const isLegacy = candidate.v === 1;
-    if (!isLegacy && candidate.v !== SHARE_VERSION) return null;
-    if (typeof candidate.n !== "string" || !Array.isArray(candidate.i)) return null;
-
-    const startingBudgetSek = isLegacy
-      ? STARTING_BUDGET_SEK
-      : typeof candidate.b === "number" && Number.isFinite(candidate.b)
-        ? Math.min(MAX_BUDGET_SEK, Math.max(1, Math.round(candidate.b)))
-        : STARTING_BUDGET_SEK;
-    const currency: CurrencyCode = !isLegacy && isCurrencyCode(candidate.c) ? candidate.c : "SEK";
-    const budgetSource: BudgetSource = !isLegacy && isBudgetSource(candidate.s) ? candidate.s : { kind: "classic" };
-
-    const validIds = new Set(products.map((product) => product.id));
+    const mode = candidate.m;
+    const startingBudgetSek = Math.min(MAX_BUDGET_SEK, Math.max(1, Math.round(candidate.b)));
+    const validProducts = products.filter((product) => product.mode === mode);
+    const validIds = new Set(validProducts.map((product) => product.id));
     const quantities = new Map<string, number>();
+
     for (const entry of candidate.i) {
       if (!Array.isArray(entry) || entry.length !== 2) continue;
       const [productId, rawQuantity] = entry;
@@ -72,7 +85,7 @@ export function decodeShareData(
       quantities.set(productId, Math.min(MAX_SHARED_QUANTITY, (quantities.get(productId) ?? 0) + quantity));
     }
 
-    const priceById = new Map(products.map((product) => [product.id, product.priceSek]));
+    const priceById = new Map(validProducts.map((product) => [product.id, product.priceSek]));
     let remainingBudget = startingBudgetSek;
     const cart = Array.from(quantities).flatMap(([productId, requestedQuantity]) => {
       const price = priceById.get(productId);
@@ -85,11 +98,12 @@ export function decodeShareData(
     if (cart.length === 0) return null;
 
     return {
-      name: candidate.n.trim().slice(0, 60) || "Future Billionaire",
+      mode,
+      name: candidate.n.trim().slice(0, 60) || "Future Shopper",
       cart,
       startingBudgetSek,
-      currency,
-      budgetSource,
+      currency: candidate.c,
+      budgetSource: candidate.s,
       timestamp: typeof candidate.t === "number" && Number.isFinite(candidate.t) ? candidate.t : undefined,
     };
   } catch {

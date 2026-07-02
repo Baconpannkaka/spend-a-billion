@@ -1,27 +1,13 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-
-export function ConfirmDialog({ open, title, description, confirmLabel, onConfirm, onClose }: { open: boolean; title: string; description: string; confirmLabel: string; onConfirm: () => void; onClose: () => void }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
-
+export function ConfirmDialog({ open, title, description, confirmLabel, onClose, onConfirm }: { open: boolean; title: string; description: string; confirmLabel: string; onClose: () => void; onConfirm: () => void }) {
+  if (!open) return null;
   return (
-    <dialog ref={dialogRef} onCancel={onClose} onClose={onClose} className="w-[min(92vw,480px)] rounded-2xl bg-[var(--paper)] p-0 text-[var(--ink)] shadow-2xl backdrop:bg-black/70">
-      <div className="p-6">
-        <h2 className="font-display text-3xl">{title}</h2>
-        <p className="mt-3 leading-7 text-black/60">{description}</p>
-        <div className="mt-6 flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="min-h-11 rounded-full border border-black/15 px-5 font-semibold hover:bg-black/5 focus-ring">Avbryt</button>
-          <button type="button" onClick={() => { onConfirm(); onClose(); }} className="min-h-11 rounded-full bg-[var(--ink)] px-5 font-semibold text-white hover:bg-black focus-ring">{confirmLabel}</button>
-        </div>
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/70 p-4" role="presentation" onMouseDown={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby="confirm-title" className="w-full max-w-md rounded-xl border border-white/15 bg-[#171714] p-6 text-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+        <h2 id="confirm-title" className="font-display text-3xl">{title}</h2><p className="mt-3 text-sm leading-6 text-white/55">{description}</p>
+        <div className="mt-6 flex justify-end gap-3"><button type="button" onClick={onClose} className="focus-ring rounded-md border border-white/15 px-4 py-2 text-sm font-semibold">Avbryt</button><button type="button" onClick={() => { onConfirm(); onClose(); }} className="focus-ring rounded-md bg-[var(--gold)] px-4 py-2 text-sm font-bold text-black">{confirmLabel}</button></div>
       </div>
-    </dialog>
+    </div>
   );
 }
